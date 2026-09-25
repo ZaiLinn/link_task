@@ -1,0 +1,4 @@
+# Optional speedups. Install these after requirements.txt if wheels exist
+# for your platform/Python version.
+TgCrypto>=1.2.5
+uvloop>=0.21

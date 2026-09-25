@@ -1,0 +1,12 @@
+# Runtime dependencies for Python 3.14+
+aiohttp>=3.12,<4
+APScheduler>=3.11,<4
+emoji>=2.14,<3
+mysql-connector-python>=9.3,<10
+Pillow>=11.3,<12
+Pyrogram==2.0.106
+PySocks>=1.7,<2
+qrcode>=8.2,<9
+redis>=6.2,<7
+requests>=2.32,<3
+
