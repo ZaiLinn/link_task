@@ -1,9 +1,26 @@
+import asyncio
+import decimal
 import logging
 import datetime
 
-from data.data import CHAT_USER_COLUMNS, CHAT_USER_TABLE_COLUMNS, ChatUser, db
+from data.data import Card, CHAT_USER_COLUMNS, CHAT_USER_TABLE_COLUMNS, ChatUser, db
 
 logs = logging.getLogger(__name__)
+
+
+async def _get_task_receive_list(task_id):
+    rows = await db.aselect(
+        "SELECT tr.id,tr.state,tr.link_url,cu.chat_id FROM task_receive as tr "
+        "LEFT JOIN chat_user as cu ON cu.id=tr.user_id WHERE tr.task_id=%s",
+        (task_id,))
+    return rows if rows else []
+
+
+async def _put_task_log_info(id, state, label):
+    return await db.aupdate(
+        "UPDATE task_log SET state=%s,label=%s WHERE id=%s",
+        (state, label, id))
+
 
 #群操作监控
 class BorInGroupData:
@@ -138,13 +155,8 @@ class BorInGroupData:
                        "WHERE task_list.user_id = %s AND task_log.state = 0 "
                        "AND (task_settlement.id IS NULL OR task_settlement.state IN (0,5))",(user,user))
         return data[0][0]
-    async def get_task_receive_list(self,task_id):
-        list = await db.aselect("SELECT tr.id,tr.state,tr.link_url,cu.chat_id FROM task_receive as tr "
-                         "LEFT JOIN chat_user as cu ON cu.id=tr.user_id WHERE tr.task_id=%s",
-                         (task_id,))
-        if list:
-            return list
-        return []
+    async def get_task_receive_list(self, task_id):
+        return await _get_task_receive_list(task_id)
     async def get_exit_user_group_info(self,chatid,groupId):
         exit_user = await db.aselect("SELECT task_log.id,task_receive.user_id,task_receive.id FROM task_log "
                               "LEFT JOIN task_user ON task_user.id=task_log.in_user "
@@ -267,16 +279,83 @@ class AutomaticDettlementTimeDate:
         if list:
             return list
         return []
-    async def put_task_log_info(self,**kwargs):
-        id = kwargs.get("id")
-        state = kwargs.get("state")
-        label = kwargs.get("label")
-        return await db.aupdate("UPDATE task_log SET state=%s,label=%s WHERE id=%s",
-                         (state,label,id))
+    async def put_task_log_info(self, **kwargs):
+        return await _put_task_log_info(kwargs.get("id"), kwargs.get("state"), kwargs.get("label"))
     async def get_price(self,settlement_id):
         price = await db.aselect("SELECT COALESCE(SUM(price), 0) as price_count FROM task_log "
                           "WHERE state =0 AND settlement_id = %s",(settlement_id,))
         return price[0][0]
+
+    async def atomic_settle(self, *, settlement_id, merchant_id, user_id, order_id_m, order_id_u, price):
+        """商家扣款、用户入账、结算状态更新在同一个数据库事务中完成，防止中间失败导致资金不一致。"""
+        return await asyncio.to_thread(
+            self._atomic_settle_sync,
+            settlement_id=settlement_id,
+            merchant_id=merchant_id,
+            user_id=user_id,
+            order_id_m=order_id_m,
+            order_id_u=order_id_u,
+            price=price,
+        )
+
+    def _atomic_settle_sync(self, *, settlement_id, merchant_id, user_id, order_id_m, order_id_u, price):
+        connection = None
+        card = Card()
+        try:
+            if not card.get_connection():
+                logs.error("atomic_settle: 无法获取数据库连接")
+                return False
+            connection = card.connect
+            card.connect = None
+            with connection.cursor(dictionary=True) as cursor:
+                # 锁定商家最新余额
+                cursor.execute(
+                    "SELECT balance FROM order_m_list WHERE user_id=%s ORDER BY id DESC LIMIT 1 FOR UPDATE",
+                    (merchant_id,),
+                )
+                row = cursor.fetchone()
+                m_balance = decimal.Decimal(str(row["balance"])) if row else decimal.Decimal("0")
+                balance_m = m_balance - price
+
+                # 商家扣款记录
+                cursor.execute(
+                    "INSERT INTO order_m_list (order_id,price,order_type,balance,user_id,label) VALUES(%s,%s,%s,%s,%s,%s)",
+                    (order_id_m, price, 1, balance_m, merchant_id, "任务结算"),
+                )
+                cursor.execute("UPDATE chat_user SET post_balance=%s WHERE id=%s", (balance_m, merchant_id))
+
+                # 锁定用户最新余额
+                cursor.execute(
+                    "SELECT balance FROM order_u_list WHERE user_id=%s ORDER BY id DESC LIMIT 1 FOR UPDATE",
+                    (user_id,),
+                )
+                row = cursor.fetchone()
+                u_balance = decimal.Decimal(str(row["balance"])) if row else decimal.Decimal("0")
+                balance_u = u_balance + price
+
+                # 用户入账记录
+                cursor.execute(
+                    "INSERT INTO order_u_list (order_id,price,order_type,balance,user_id,link_id,label) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                    (order_id_u, price, 0, balance_u, user_id, order_id_m, "任务结算"),
+                )
+                cursor.execute("UPDATE chat_user SET task_balance=%s WHERE id=%s", (balance_u, user_id))
+
+                # 结算单标记完成
+                cursor.execute(
+                    "UPDATE task_settlement SET state=1,pay_order=%s,income_order=%s,label=%s WHERE id=%s",
+                    (order_id_m, order_id_u, "超时自动结算成功", settlement_id),
+                )
+                connection.commit()
+                return True
+        except Exception as err:
+            if connection:
+                connection.rollback()
+            logs.error(f"atomic_settle 事务回滚:{err}")
+            return False
+        finally:
+            if connection:
+                connection.close()
+
 # 检查定时器
 class RegularDetectionDate:
     async def get_log_list(self,**kwargs):
@@ -302,12 +381,8 @@ class RegularDetectionDate:
         if list:
             return list
         return []
-    async def put_task_log_info(self,**kwargs):
-        id = kwargs.get("id")
-        state = kwargs.get("state")
-        label = kwargs.get("label")
-        return await db.aupdate("UPDATE task_log SET state=%s,label=%s WHERE id=%s",
-                         (state,label,id))
+    async def put_task_log_info(self, **kwargs):
+        return await _put_task_log_info(kwargs.get("id"), kwargs.get("state"), kwargs.get("label"))
 # 任务操作
 class TaskOperationDate:
     async def get_task_user_group_info(self,task_id):
@@ -317,13 +392,8 @@ class TaskOperationDate:
         if info:
             return info[0]
         return []
-    async def get_task_receive_list(self,task_id):
-        list = await db.aselect("SELECT tr.id,tr.state,tr.link_url,cu.chat_id FROM task_receive as tr "
-                         "LEFT JOIN chat_user as cu ON cu.id=tr.user_id WHERE tr.task_id=%s",
-                         (task_id,))
-        if list:
-            return list
-        return []
+    async def get_task_receive_list(self, task_id):
+        return await _get_task_receive_list(task_id)
     async def put_task_state_info(self,id,state,label):
         task = await db.aupdate(f"UPDATE task_list SET state=%s,label=%s WHERE id=%s",(state,label,id))
         return task

@@ -62,7 +62,7 @@ class MyWithdraw(BaseView):
         myW=MyWithdrawDate()
         try:
             okPya= OkayPay()
-            ByTG = okPya.censorUserByTG(data={'telegramID': user[1]})
+            ByTG = await okPya.censorUserByTG(data={'telegramID': user[1]})
             if ByTG.get('data').get('exist'):
                 balance = await myW.get_u_balance(user=user[0])
                 balance=balance-price

@@ -1,6 +1,7 @@
-import hashlib
+import asyncio
 import requests
 from core.config import bot_config
+from services.okpay_callback import _okpay_md5
 
 
 class OkayPay:
@@ -13,24 +14,22 @@ class OkayPay:
         self.api_url_censorUserByTG = api_url + 'censorUserByTG'
         self.api_url_TransactionHistory = api_url + 'TransactionHistory'
 
-    def pay_link(self, data):
-        return self.post(self.api_url_payLink, data)
+    async def pay_link(self, data):
+        return await self._post(self.api_url_payLink, data)
 
-    def transfer(self, data):
-        return self.post(self.api_url_transfer, data)
+    async def transfer(self, data):
+        return await self._post(self.api_url_transfer, data)
 
-    def censorUserByTG(self, data):
-        return self.post(self.api_url_censorUserByTG, data)
+    async def censorUserByTG(self, data):
+        return await self._post(self.api_url_censorUserByTG, data)
 
     def sign(self, data):
-        data['id'] = self.id
         data = {k: v for k, v in data.items() if v is not None}
-        data = dict(sorted(data.items()))
-        sign_str = '&'.join([f"{k}={v}" for k, v in data.items()]) + f'&token={self.token}'
-        data['sign'] = hashlib.md5(sign_str.encode('utf-8')).hexdigest().upper()
+        data["id"] = self.id
+        data["sign"] = _okpay_md5(data, self.id, self.token)
         return data
 
-    def post(self, url, data):
+    async def _post(self, url, data):
         data = self.sign(data)
-        response = requests.post(url, data=data, timeout=10)
+        response = await asyncio.to_thread(requests.post, url, data=data, timeout=10)
         return response.json()

@@ -12,7 +12,7 @@ class Var:
         self.id = Id
 
     async def write(self, value=None):
-        if not value:
+        if value is None:
             return False
         try:
             redis_client.set(self._key(), json.dumps(value, default=str), ex=60 * 60 * 24)
