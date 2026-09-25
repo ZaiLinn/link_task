@@ -1,0 +1,8 @@
+2026-07-16 20:20:36,209 - CRITICAL - okPay充值回调:{'code': 200, 'status': 'success', 'data': {'unique_id': 'pay-100', 'order_id': 'tx-200', 'amount': '12.5', 'pay_user_id': 12345}}
+2026-07-16 20:20:36,210 - CRITICAL - OkPay重复回调已忽略:okpay:callback:pay-100:tx-200
+2026-07-16 20:29:32,457 - CRITICAL - okPay充值回调:{'code': 200, 'status': 'success', 'data': {'unique_id': 'pay-100', 'order_id': 'tx-200', 'amount': '12.5', 'pay_user_id': 12345}}
+2026-07-16 20:29:32,458 - CRITICAL - OkPay重复回调已忽略:okpay:callback:pay-100:tx-200
+2026-07-16 20:30:03,336 - CRITICAL - okPay充值回调:{'code': 200, 'status': 'success', 'data': {'unique_id': 'pay-100', 'order_id': 'tx-200', 'amount': '12.5', 'pay_user_id': 12345}}
+2026-07-16 20:30:03,337 - CRITICAL - OkPay重复回调已忽略:okpay:callback:pay-100:tx-200
+2026-07-16 20:30:26,953 - CRITICAL - okPay充值回调:{'code': 200, 'status': 'success', 'data': {'unique_id': 'pay-100', 'order_id': 'tx-200', 'amount': '12.5', 'pay_user_id': 12345}}
+2026-07-16 20:30:26,954 - CRITICAL - OkPay重复回调已忽略:okpay:callback:pay-100:tx-200
