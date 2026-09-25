@@ -16,13 +16,17 @@ def _compact_value(value):
     return value
 
 
-def _okpay_sign(data, token):
-    sign_data = dict(data)
-    sign_data["id"] = bot_config["OkPay_id"]
-    sign_data = {key: value for key, value in sign_data.items() if value is not None and key != "sign"}
-    sign_data = dict(sorted(sign_data.items()))
-    sign_str = "&".join([f"{key}={value}" for key, value in sign_data.items()]) + f"&token={token}"
+def _okpay_md5(data: dict, merchant_id: str, token: str) -> str:
+    """计算 OkPay MD5 签名，在副本上操作，不修改调用方的 dict。"""
+    d = {k: v for k, v in data.items() if v is not None and k not in ("sign", "id")}
+    d["id"] = merchant_id
+    d = dict(sorted(d.items()))
+    sign_str = "&".join(f"{k}={v}" for k, v in d.items()) + f"&token={token}"
     return hashlib.md5(sign_str.encode("utf-8")).hexdigest().upper()
+
+
+def _okpay_sign(data, token):
+    return _okpay_md5(data, bot_config["OkPay_id"], token)
 
 
 def verify_okpay_signature(post_json):

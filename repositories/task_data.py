@@ -7,6 +7,21 @@ from data.data import Card, CHAT_USER_COLUMNS, CHAT_USER_TABLE_COLUMNS, ChatUser
 
 logs = logging.getLogger(__name__)
 
+
+async def _get_task_receive_list(task_id):
+    rows = await db.aselect(
+        "SELECT tr.id,tr.state,tr.link_url,cu.chat_id FROM task_receive as tr "
+        "LEFT JOIN chat_user as cu ON cu.id=tr.user_id WHERE tr.task_id=%s",
+        (task_id,))
+    return rows if rows else []
+
+
+async def _put_task_log_info(id, state, label):
+    return await db.aupdate(
+        "UPDATE task_log SET state=%s,label=%s WHERE id=%s",
+        (state, label, id))
+
+
 #群操作监控
 class BorInGroupData:
     async def getUser(self,id=None,chat_id=None):
@@ -140,13 +155,8 @@ class BorInGroupData:
                        "WHERE task_list.user_id = %s AND task_log.state = 0 "
                        "AND (task_settlement.id IS NULL OR task_settlement.state IN (0,5))",(user,user))
         return data[0][0]
-    async def get_task_receive_list(self,task_id):
-        list = await db.aselect("SELECT tr.id,tr.state,tr.link_url,cu.chat_id FROM task_receive as tr "
-                         "LEFT JOIN chat_user as cu ON cu.id=tr.user_id WHERE tr.task_id=%s",
-                         (task_id,))
-        if list:
-            return list
-        return []
+    async def get_task_receive_list(self, task_id):
+        return await _get_task_receive_list(task_id)
     async def get_exit_user_group_info(self,chatid,groupId):
         exit_user = await db.aselect("SELECT task_log.id,task_receive.user_id,task_receive.id FROM task_log "
                               "LEFT JOIN task_user ON task_user.id=task_log.in_user "
@@ -269,12 +279,8 @@ class AutomaticDettlementTimeDate:
         if list:
             return list
         return []
-    async def put_task_log_info(self,**kwargs):
-        id = kwargs.get("id")
-        state = kwargs.get("state")
-        label = kwargs.get("label")
-        return await db.aupdate("UPDATE task_log SET state=%s,label=%s WHERE id=%s",
-                         (state,label,id))
+    async def put_task_log_info(self, **kwargs):
+        return await _put_task_log_info(kwargs.get("id"), kwargs.get("state"), kwargs.get("label"))
     async def get_price(self,settlement_id):
         price = await db.aselect("SELECT COALESCE(SUM(price), 0) as price_count FROM task_log "
                           "WHERE state =0 AND settlement_id = %s",(settlement_id,))
@@ -375,12 +381,8 @@ class RegularDetectionDate:
         if list:
             return list
         return []
-    async def put_task_log_info(self,**kwargs):
-        id = kwargs.get("id")
-        state = kwargs.get("state")
-        label = kwargs.get("label")
-        return await db.aupdate("UPDATE task_log SET state=%s,label=%s WHERE id=%s",
-                         (state,label,id))
+    async def put_task_log_info(self, **kwargs):
+        return await _put_task_log_info(kwargs.get("id"), kwargs.get("state"), kwargs.get("label"))
 # 任务操作
 class TaskOperationDate:
     async def get_task_user_group_info(self,task_id):
@@ -390,13 +392,8 @@ class TaskOperationDate:
         if info:
             return info[0]
         return []
-    async def get_task_receive_list(self,task_id):
-        list = await db.aselect("SELECT tr.id,tr.state,tr.link_url,cu.chat_id FROM task_receive as tr "
-                         "LEFT JOIN chat_user as cu ON cu.id=tr.user_id WHERE tr.task_id=%s",
-                         (task_id,))
-        if list:
-            return list
-        return []
+    async def get_task_receive_list(self, task_id):
+        return await _get_task_receive_list(task_id)
     async def put_task_state_info(self,id,state,label):
         task = await db.aupdate(f"UPDATE task_list SET state=%s,label=%s WHERE id=%s",(state,label,id))
         return task

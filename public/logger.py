@@ -21,9 +21,9 @@ class LoggerConfig:
         file_handler.setFormatter(formatter)
         console_handler.setFormatter(formatter)
 
-        # 添加处理器到日志器
-        self.logger.addHandler(file_handler)
-        self.logger.addHandler(console_handler)
+        if not self.logger.handlers:
+            self.logger.addHandler(file_handler)
+            self.logger.addHandler(console_handler)
 
     def get_logger(self):
         return self.logger
