@@ -6,7 +6,6 @@ import uuid
 from pyrogram.errors import RPCError
 
 from core.bot import app
-from data.data import ChatUser
 from public.logger import LoggerConfig
 from repositories.task_data import AutomaticDettlementTimeDate, SettlementTimeDate
 from services.telegram_utils import isPrivileges
@@ -98,55 +97,31 @@ async def CheckBillingInvited(sett):
 async def _process_settlement(sett, sett_date, one_day):
     settlement_logs.critical(sett)
     price = await CheckBillingInvited(sett=sett)
-    if price and price > decimal.Decimal(0):
-        success_rate = await StatisticalSuccessRate(task=sett)
-        if success_rate:
-            user_obj = ChatUser()
-            m_balance = await user_obj.get_m_balance(user=sett[3])
-            balance = m_balance[0] - price
-            order_id = uuid.uuid4().hex
-            create_order_m = await sett_date.post_create__order_m(
-                order_id=order_id,
-                price=price,
-                order_type=1,
-                balance=balance,
-                user_id=sett[3],
-                label="任务结算",
-            )
-            if create_order_m:
-                u_balance = await user_obj.get_u_balance(user=sett[4])
-                order_id_u = uuid.uuid4().hex
-                balance_u = u_balance[0] + price
-                create_order_u = await sett_date.post_create__order_u(
-                    order_id=order_id_u,
-                    price=price,
-                    order_type=0,
-                    balance=balance_u,
-                    user_id=sett[4],
-                    link_id=order_id,
-                    label="任务结算",
-                )
-                put_settlement = await sett_date.put_settlement_info(
-                    settlement=sett[0],
-                    state=1,
-                    pay_order=order_id,
-                    income_order=order_id_u,
-                    label="超时自动结算成功",
-                )
-                settlement_logs.critical(
-                    f"时间：{one_day}之前-:{sett}\n"
-                    f"商家:{create_order_m}用户:{create_order_u}结算状态:{put_settlement}，超时的自动结算成功,"
-                )
-        else:
-            put_settlement = await sett_date.put_settlement_info(
-                settlement=sett[0],
-                state=5,
-                label="拒绝结算疑似作弊",
-            )
-            settlement_logs.critical(f"时间：{one_day}之前-:{sett}\n拒绝结算疑似作弊:{put_settlement}")
-    else:
+    if not price or price <= decimal.Decimal(0):
         put_settlement = await sett_date.put_settlement_info(settlement=sett[0], state=5, label="结算金额为零")
         settlement_logs.critical(f"时间：{one_day}之前-id:{sett}\n结算金额为零{put_settlement}")
+        return
+
+    if not await StatisticalSuccessRate(task=sett):
+        put_settlement = await sett_date.put_settlement_info(
+            settlement=sett[0], state=5, label="拒绝结算疑似作弊",
+        )
+        settlement_logs.critical(f"时间：{one_day}之前-:{sett}\n拒绝结算疑似作弊:{put_settlement}")
+        return
+
+    order_id_m = uuid.uuid4().hex
+    order_id_u = uuid.uuid4().hex
+    ok = await sett_date.atomic_settle(
+        settlement_id=sett[0],
+        merchant_id=sett[3],
+        user_id=sett[4],
+        order_id_m=order_id_m,
+        order_id_u=order_id_u,
+        price=price,
+    )
+    settlement_logs.critical(
+        f"时间：{one_day}之前-:{sett}\n原子结算结果:{ok}，超时的自动结算{'成功' if ok else '失败'},"
+    )
 
 
 async def AutomaticDettlementTime():

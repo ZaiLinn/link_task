@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import requests
 from core.config import bot_config
@@ -13,14 +14,14 @@ class OkayPay:
         self.api_url_censorUserByTG = api_url + 'censorUserByTG'
         self.api_url_TransactionHistory = api_url + 'TransactionHistory'
 
-    def pay_link(self, data):
-        return self.post(self.api_url_payLink, data)
+    async def pay_link(self, data):
+        return await self._post(self.api_url_payLink, data)
 
-    def transfer(self, data):
-        return self.post(self.api_url_transfer, data)
+    async def transfer(self, data):
+        return await self._post(self.api_url_transfer, data)
 
-    def censorUserByTG(self, data):
-        return self.post(self.api_url_censorUserByTG, data)
+    async def censorUserByTG(self, data):
+        return await self._post(self.api_url_censorUserByTG, data)
 
     def sign(self, data):
         data['id'] = self.id
@@ -30,7 +31,7 @@ class OkayPay:
         data['sign'] = hashlib.md5(sign_str.encode('utf-8')).hexdigest().upper()
         return data
 
-    def post(self, url, data):
+    async def _post(self, url, data):
         data = self.sign(data)
-        response = requests.post(url, data=data, timeout=10)
+        response = await asyncio.to_thread(requests.post, url, data=data, timeout=10)
         return response.json()

@@ -19,9 +19,9 @@ class AdminWithdrawActionMixin:
         info = await myW.get_withdraw_info(id=wid[0])
         if info:
             okPya= OkayPay()
-            ByTG = okPya.censorUserByTG(data={'telegramID': info[13]})
+            ByTG = await okPya.censorUserByTG(data={'telegramID': info[13]})
             if ByTG.get('data').get('exist'):
-                transfer_ = okPya.transfer({'unique_id':info[4],'name': f"{bot_config['botName']}-用户佣金提现",
+                transfer_ = await okPya.transfer({'unique_id':info[4],'name': f"{bot_config['botName']}-用户佣金提现",
                                             'amount':info[2],'to_user_id':info[13],'coin':'USDT'})
                 if transfer_.get('data') and transfer_.get('data').get('order_id'):
                     pay_time=datetime.datetime.now()

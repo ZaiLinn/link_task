@@ -121,7 +121,7 @@ class MerchantWallet(BaseView):
                 'coin': "USDT"
             }
             ok = OkayPay()
-            ok_order = ok.pay_link(data=order_info)
+            ok_order = await ok.pay_link(data=order_info)
             logs.info(" ".join(str(value) for value in (ok_order,)))
             if ok_order.get('code') == 200:
                 data = ok_order.get('data')
